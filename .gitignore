@@ -118,3 +118,4 @@ pip_install.bat
 /tests/scans/supplier_hub.json
 
 .vscode
+files.txt

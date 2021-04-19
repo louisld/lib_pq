@@ -1,8 +1,10 @@
-from scipy import integrate
+from scipy import integrate, optimize
 import numpy as np
 import matplotlib.pyplot as plt
 from os import path
 import os
+
+from .utils import printProgressBar, kronecker
 
 
 class PQ():
@@ -11,42 +13,6 @@ class PQ():
         self.R = R
         self.N = N
         self.a = a
-
-    def printProgressBar(self, iteration, total, prefix='', suffix='', decimals=1, length=100, fill='█', printEnd="\r"):
-        """
-        Call in a loop to create terminal progress bar
-        @params:
-            iteration   - Required  : current iteration (Int)
-            total       - Required  : total iterations (Int)
-            prefix      - Optional  : prefix string (Str)
-            suffix      - Optional  : suffix string (Str)
-            decimals    - Optional  : positive number of decimals in percent complete (Int)
-            length      - Optional  : character length of bar (Int)
-            fill        - Optional  : bar fill character (Str)
-            printEnd    - Optional  : end character (e.g. "\r", "\r\n") (Str)
-        """
-        percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
-        filledLength = int(length * iteration // total)
-        bar = fill * filledLength + '-' * (length - filledLength)
-        print(f'\r{prefix} |{bar}| {percent}% {suffix}', end=printEnd)
-        # Print New Line on Complete
-        if iteration == total:
-            print()
-
-    @staticmethod
-    def kronecker(m, n):
-        """
-        Fonction de kronecker
-
-        Parameters
-        ----------
-        m : int
-        n : int
-        """
-        if(m == n):
-            return 1
-        else:
-            return 0
 
     def calcHamiltonien(self, cache=True, **kwargs):
         """
@@ -61,12 +27,14 @@ class PQ():
         """
         if self.potentiel is None:
             raise ValueError("La fonction potentiel n'a pas été définie")
+        # Lecture du cache
         if cache is True:
             if path.exists('cache/h{}.csv'.format(self.N)):
                 self.h = np.loadtxt('cache/h{}.csv'.format(self.N), delimiter=',')
                 return self.h
+
         h = np.zeros((self.N, self.N))
-        self.printProgressBar(0, self.N, prefix="Calcul de l'hamiltonien :", length=50)
+        printProgressBar(0, self.N, prefix="Calcul de l'hamiltonien :", length=50)
         for n in range(1, self.N+1):
             for m in range(1, self.N+1):
                 def g(x):
@@ -74,14 +42,17 @@ class PQ():
                     res *= np.sin(m*np.pi*np.array(x))
                     res *= self.potentiel(x, **kwargs)
                     return res
-                h[n-1, m-1] = n**2*self.kronecker(m, n)
+                h[n-1, m-1] = n**2*kronecker(m, n)
                 h[n-1, m-1] += 2*integrate.quad(g, 0, kwargs['a'], full_output=1)[0]
-            self.printProgressBar(n, self.N, prefix='Calcul de l\'hamiltonien :', length=50)
+            printProgressBar(n, self.N, prefix='Calcul de l\'hamiltonien :', length=50)
         self.h = h
+
+        # Écriture du cache
         if cache is True:
             csvdata = np.asarray(self.h)
             os.makedirs('./cache', exist_ok=True)
             np.savetxt('cache/h{}.csv'.format(self.N), csvdata, delimiter=",")
+
         return h
 
     def calcElementsPropres(self):
@@ -152,9 +123,8 @@ class PQ():
         n : int
             Niveau d'énergie
         """
-        if self.h is None:
-            self.calcHamiltonien(a=self.a)
-            self.calcElementsPropres()
+        self.calcHamiltonien(a=self.a)
+        self.calcElementsPropres()
         fig, axs = plt.subplots(1, 2)
         self.plot_potentiel_puit_infini(axs[0])
         axs[0].hlines(self.vap[n], 0, self.a, color="red")
@@ -170,4 +140,25 @@ class PQ():
         self.calcHamiltonien(a=self.a)
         self.calcElementsPropres()
         n = range(1, self.N+1)
-        plt.plot(n, self.vap, label="$\\epsilon(n)$")
+        plt.plot(n, self.vap, label="$\\epsilon(n)$", linestyle="", marker="+")
+        plt.xlabel("n")
+        plt.ylabel("Énergie")
+
+    def plot_fit_energie(self):
+        zone1 = np.array(range(0, 17))
+        zone2 = np.array(range(18, 33))
+        zone3 = np.array(range(33, 49))
+
+        def f(x, a, b, c):
+            return a*x**2+b*x+c
+
+        fit1, _ = optimize.curve_fit(f, zone1, self.vap[0:17])
+        print("zone 1 : {}".format(fit1))
+        fit2, _ = optimize.curve_fit(f, zone2, self.vap[18:33])
+        print("zone 2 : {}".format(fit2))
+        fit3, _ = optimize.curve_fit(f, zone3, self.vap[33:49])
+        print("zone 3 : {}".format(fit3))
+        plt.plot(zone1 + 1, f(zone1, fit1[0], fit1[1], fit1[2]), label="Fit 1")
+        plt.plot(zone2 + 1, f(zone2, fit2[0], fit2[1], fit2[2]), label="Fit 2")
+        plt.plot(zone3 + 1, f(zone3, fit3[0], fit3[1], fit3[2]), label="Fit 3")
+        plt.legend()
